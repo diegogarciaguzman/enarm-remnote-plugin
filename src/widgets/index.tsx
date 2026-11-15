@@ -20,8 +20,14 @@ async function runSync(plugin: ReactRNPlugin): Promise<void> {
     const created = results.filter((r) => r.status === 'creado').length;
     const skipped = results.filter((r) => r.status === 'ya-existia').length;
     const errors = results.filter((r) => r.status === 'error');
+    // El detalle del primer error va en el propio aviso: es el único canal
+    // que siempre se ve (el widget no siempre aparece en la barra lateral).
+    const firstError = errors[0];
     await plugin.app.toast(
-      `ENARM: ${created} tema(s) creado(s), ${skipped} ya estaban, ${errors.length} con error.`,
+      `ENARM: ${created} tema(s) creado(s), ${skipped} ya estaban, ${errors.length} con error.` +
+        (firstError
+          ? ` Primer error (${firstError.date} ${firstError.topic}): ${firstError.detail ?? 'sin detalle'}.`
+          : ''),
     );
   } catch (error) {
     await plugin.app.toast(
