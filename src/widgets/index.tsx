@@ -13,6 +13,12 @@ import { syncAll } from '../sync';
 
 /** Descarga la cola y mete en RemNote los temas que falten. Muestra un toast con el resumen. */
 async function runSync(plugin: ReactRNPlugin): Promise<void> {
+  if (!plugin.rem) {
+    await plugin.app.toast(
+      'ENARM: RemNote no entregó acceso a los documentos (plugin.rem vacío). Revisa los permisos del plugin en Ajustes → Plugins y reinstala el ZIP aceptando todos los permisos.',
+    );
+    return;
+  }
   try {
     const settings = await readEnarmSettings(plugin);
     const queue = await fetchQueue(settings.queueUrl);
