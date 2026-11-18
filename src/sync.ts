@@ -31,6 +31,16 @@
  * sync (status "creado"). La promoción no borra ni duplica nada: el árbol
  * viejo ES el documento nuevo.
  *
+ * v0.1.4 — VISIBILIDAD Y ANTI-DUPLICADOS (Diego, 18 nov 2026): la
+ * contingencia del segundo `#` ya corre también en el camino
+ * "ya-existia" (antes era código muerto tras la promoción). Candado
+ * único de corrida (runSyncAllOnce) compartido por auto-sync, comando
+ * y widget; registro persistente de las últimas 10 corridas (getSyncLog)
+ * con sus errores; detección de duplicados tras crear y al encontrar un
+ * tema (avisa si hay más de un documento con el mismo nombre bajo la
+ * especialidad, sin borrar nada). El diagnóstico de visibilidad y el
+ * reveal viven en verify.ts.
+ *
  * Idempotente: si el documento del tema ya existe bajo su especialidad,
  * se salta (status "ya-existia"). Nunca borra ni modifica rems existentes
  * salvo el flag de documento del propio tema. Solo crea lo que falta. Las
@@ -95,7 +105,7 @@ async function appendRem(plugin: SyncPlugin, remId: string, parentId: string): P
 }
 
 /** Texto plano de un rem (partes string y el `.text` de los elementos). */
-function remPlainText(rem: TopicRem): string {
+export function remPlainText(rem: TopicRem): string {
   const parts: unknown = (rem as { text?: unknown }).text;
   if (!Array.isArray(parts)) return '';
   return parts
@@ -150,7 +160,46 @@ async function ensureUppercaseSectionInside(
   return 'sección en mayúsculas movida bajo el título';
 }
 
-/** Busca un rem de nivel superior por nombre exacto; si no existe, lo crea. */
+/**
+ * Cuenta cuántos hijos directos de la especialidad tienen el mismo nombre
+ * que el tema. Lee el árbol (getChildrenRem), NO el índice de búsqueda:
+ * findByName depende del índice, y con el índice atascado (nov 2026) no
+ * encontraba temas que sí existían y el sync los creaba de nuevo
+ * (origen probable de los 10 duplicados). Devuelve 0 si no se puede leer.
+ */
+async function countSameNameSiblings(
+  plugin: SyncPlugin,
+  specialtyId: string,
+  name: string,
+): Promise<number> {
+  try {
+    const parent = await plugin.rem.findOne(specialtyId);
+    if (!parent) return 0;
+    const kids = await parent.getChildrenRem();
+    let n = 0;
+    for (const kid of kids) {
+      if (remPlainText(kid) === name) n++;
+    }
+    return n;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Advertencia para el detalle del tema si hay más de un documento con su
+ * nombre bajo la especialidad. No borra nada: solo avisa.
+ */
+async function duplicateWarning(
+  plugin: SyncPlugin,
+  specialtyId: string,
+  name: string,
+): Promise<string> {
+  const n = await countSameNameSiblings(plugin, specialtyId, name);
+  return n > 1
+    ? ` (advertencia: hay ${n} documentos con este nombre bajo la especialidad; posible duplicado)`
+    : '';
+}
 async function findOrCreateTopRem(
   plugin: SyncPlugin,
   name: string,
@@ -223,14 +272,23 @@ export async function syncTopic(
       // en su lugar (mismo rem, mismos hijos, mismas tarjetas).
       step = 'isDocument()';
       if (await existing.isDocument()) {
-        return { ...base, status: 'ya-existia', detail: 'El tema ya era un documento independiente' };
+        // v0.1.4: la contingencia del segundo `#` YA NO es código muerto:
+        // corre también en el camino "ya-existia", antes del retorno.
+        const note = await ensureUppercaseSectionInside(plugin, existing, specialtyId, topic, onStep);
+        const dup = await duplicateWarning(plugin, specialtyId, topic.topic);
+        return {
+          ...base,
+          status: 'ya-existia',
+          detail: `El tema ya era un documento independiente${note ? ` (${note})` : ''}${dup}`,
+        };
       }
       await promoteToDocument(existing, onStep);
       const note = await ensureUppercaseSectionInside(plugin, existing, specialtyId, topic, onStep);
+      const dup = await duplicateWarning(plugin, specialtyId, topic.topic);
       return {
         ...base,
         status: 'convertido',
-        detail: `Tema anidado promovido a documento independiente${note ? ` (${note})` : ''}`,
+        detail: `Tema anidado promovido a documento independiente${note ? ` (${note})` : ''}${dup}`,
       };
     }
     // No existe: se crea el árbol y su raíz se marca como documento.
@@ -255,10 +313,11 @@ export async function syncTopic(
     }
     await promoteToDocument(titleRem, onStep);
     const note = await ensureUppercaseSectionInside(plugin, titleRem, specialtyId, topic, onStep);
+    const dup = await duplicateWarning(plugin, specialtyId, topic.topic);
     return {
       ...base,
       status: 'creado',
-      detail: `Documento independiente creado bajo su especialidad${note ? ` (${note})` : ''}`,
+      detail: `Documento independiente creado bajo su especialidad${note ? ` (${note})` : ''}${dup}`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -287,4 +346,70 @@ export async function syncAll(plugin: SyncPlugin, queue: EnarmQueue): Promise<Sy
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Candado de corrida + registro persistente de syncs (v0.1.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Una entrada del registro de syncs: lo que se ve en el widget y queda
+ * guardado entre corridas (antes cada corrida sobrescribía el estado y
+ * no se podía reconstruir qué falló, como con los 9 errores de v0.1.2).
+ */
+export interface SyncLogEntry {
+  /** Marca de tiempo ISO de cuando terminó la corrida. */
+  at: string;
+  created: number;
+  converted: number;
+  skipped: number;
+  errors: { date: string; topic: string; detail?: string }[];
+}
+
+const MAX_LOG_ENTRIES = 10;
+const syncLog: SyncLogEntry[] = [];
+
+/** Candado único de corrida, compartido por auto-sync, comando y widget. */
+let syncRunning = false;
+
+export function isSyncRunning(): boolean {
+  return syncRunning;
+}
+
+/** Copia del registro de las últimas corridas (la más reciente primero). */
+export function getSyncLog(): SyncLogEntry[] {
+  return [...syncLog];
+}
+
+/**
+ * Corre syncAll una sola vez: si ya hay una corrida en curso (auto-sync,
+ * comando o botón del widget), NO arranca otra y devuelve ran: false.
+ * Cada corrida que sí corre queda registrada en el log.
+ */
+export async function runSyncAllOnce(
+  plugin: SyncPlugin,
+  queue: EnarmQueue,
+): Promise<{ ran: boolean; results: SyncResult[] | null }> {
+  if (syncRunning) {
+    return { ran: false, results: null };
+  }
+  syncRunning = true;
+  try {
+    const results = await syncAll(plugin, queue);
+    syncLog.unshift({
+      at: new Date().toISOString(),
+      created: results.filter((r) => r.status === 'creado').length,
+      converted: results.filter((r) => r.status === 'convertido').length,
+      skipped: results.filter((r) => r.status === 'ya-existia').length,
+      errors: results
+        .filter((r) => r.status === 'error')
+        .map((r) => ({ date: r.date, topic: r.topic, detail: r.detail })),
+    });
+    if (syncLog.length > MAX_LOG_ENTRIES) {
+      syncLog.length = MAX_LOG_ENTRIES;
+    }
+    return { ran: true, results };
+  } finally {
+    syncRunning = false;
+  }
 }

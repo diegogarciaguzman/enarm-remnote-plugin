@@ -60,6 +60,25 @@ ENARM
 
 ## Cambios
 
+- **v0.1.4 (18 nov 2026) — visibilidad de documentos (reveal)**: las
+  páginas de los 31 documentos se veían casi vacías aunque el contenido
+  está completo en el árbol: los hijos estaban ocultos en el contexto de
+  portal de la página del documento (se crearon por programa y nunca se
+  marcaron como visibles en esa página). Nuevo comando `ENARM:
+  diagnosticar visibilidad de documentos` (SOLO LECTURA: cuenta
+  hidden/included/none por tema y verifica el padre de la sección en
+  mayúsculas) y comando `ENARM: revelar contenido de documentos`
+  (marca `included` lo que esté `hidden` + `expand` recursivo;
+  idempotente, reversible, sin mover ni borrar). **Secuencia: primero
+  diagnóstico, y solo si confirma ocultos, reveal.** También: verificación
+  de tarjetas por tema (`ENARM: verificar tarjetas por tema`, solo
+  lectura, `getAll()` + `getDescendants()` contra los `>>` de la cola),
+  candado único de corrida para el sync (auto-sync, comando y botón no
+  se solapan), detección de duplicados tras crear (avisa si hay más de
+  un documento con el mismo nombre bajo la especialidad, sin borrar
+  nada) y registro persistente de las últimas 10 corridas del sync en
+  el widget. La contingencia del segundo `#` ya corre también en el
+  camino "ya-existia" (antes era código muerto tras la promoción).
 - **v0.1.3 (18 nov 2026) — documentos independientes**: cada tema pasa a
   ser su propio documento (`setIsDocument(true)`); los 31 temas anidados
   que ya existían se promueven en su lugar (status `convertido` en el
@@ -94,6 +113,7 @@ del cambio.
 - `src/settings.ts` — ajustes: URL de la cola y auto-sync.
 - `src/queue.ts` — tipos y descarga/validación de la cola.
 - `src/sync.ts` — motor: crea raíz ENARM → especialidad → tema.
+- `src/verify.ts` — v0.1.4: diagnóstico de visibilidad, reveal y verificación de tarjetas por tema.
 - `src/widgets/index.tsx` — onActivate: registra ajustes, comando y widget.
 - `src/widgets/enarm_sync.tsx` — widget lateral con botón y reporte de sync.
 - `../data/queue.json` — cola actual (tema de prueba: Control prenatal).
@@ -127,6 +147,29 @@ apunta a https://github.com/diegogarciaguzman/enarm-remnote-plugin).
 ruta (Build → "Upload plugin"); RemNote reemplaza la versión instalada.
 Después, pulsa "Sincronizar ahora" para que el sync nuevo corra (o reabre
 RemNote y deja que el auto-sync lo haga solo).
+
+## Secuencia v0.1.4 (páginas vacías)
+
+Si al abrir un tema su página se ve casi vacía (solo el encabezado en
+mayúsculas y viñetas vacías), el contenido NO se perdió: sus hijos están
+ocultos en la vista de esa página. Secuencia:
+
+1. Corre `ENARM: diagnosticar visibilidad de documentos` (Ctrl/Cmd+K) o
+   el botón "Diagnosticar visibilidad" del widget. Solo lee: cuenta por
+   tema cuántos hijos están ocultos/incluidos/sin estado y verifica el
+   padre de la sección en mayúsculas. El detalle queda en el widget.
+2. Si el diagnóstico confirma hijos ocultos, corre `ENARM: revelar
+   contenido de documentos` (o el botón "Revelar contenido"). Marca
+   incluidos los hijos ocultos y expande el documento. Es idempotente
+   (una segunda corrida no toca nada) y reversible, sin mover ni borrar
+   nada. El reveal NUNCA corre solo desde el diagnóstico: son comandos
+   separados a propósito.
+3. Opcional: `ENARM: verificar tarjetas por tema` cuenta las tarjetas
+   reales por tema contra los `>>` de la cola (724 en total) y reporta
+   por tema esperadas/reales/estado en el widget.
+
+El widget también muestra el registro de las últimas 10 corridas del
+sync (con sus errores) y avisa si hay duplicados bajo una especialidad.
 
 Si algo sale mal: abre RemNote con los plugins desactivados en
 http://www.remnote.com/notes?disablePlugins y quita el plugin.
