@@ -14,12 +14,14 @@ y ve las flashcards.
    desde el enlace de Muse, que se cayó con un 403 el 13 nov 2026).
 2. El plugin, al abrir RemNote (o con el botón "Sincronizar ahora" / el
    comando `ENARM: sincronizar resúmenes ahora`), descarga la cola y crea
-   lo que falte con esta estructura:
+   lo que falte con esta estructura (desde v0.1.3 cada tema es su propio
+   documento independiente dentro de su especialidad, no una viñeta
+   anidada):
 
 ```
 ENARM
 └─ GINECOLOGÍA Y OBSTETRICIA
-     └─ Control prenatal
+     └─ Control prenatal  (DOCUMENTO: se abre solo, aparece en la barra lateral)
           ├─ ⭐ Detalles.
           ├─ Puntos de oro.
           │    ├─ Flashcards.   (solo las del simulador del curso, formato >>)
@@ -39,7 +41,9 @@ ENARM
 ```
 
 3. Es idempotente: si el tema ya existe bajo su especialidad, se salta.
-   Nunca borra ni modifica rems existentes.
+   Nunca borra ni modifica rems existentes (salvo el flag de documento del
+   propio tema, v0.1.3). Los temas que ya existían anidados se promueven a
+   documento en su lugar (mismo rem, mismos hijos, mismas tarjetas).
 
 ## Reglas (de Diego)
 
@@ -50,25 +54,30 @@ ENARM
 - El resumen usa su plantilla exacta (Detalles / Puntos de oro / Puntos a
   reforzar / Generalidades / tema en mayúsculas con sus 8 subsecciones).
 - Un documento por tema, bajo el rem padre de su especialidad (`#Especialidad`).
+  Desde v0.1.3 el rem raíz del tema se marca como documento con
+  `Rem.setIsDocument(true)`: se abre solo y aparece en la barra lateral,
+  sin moverse de su especialidad.
 
-## Limitación conocida (v1)
+## Cambios
 
-El markdown no expresa los colores de la plantilla (encabezados grises y
-amarillos) ni los tamaños de letra. La estructura y el contenido sí llegan
-tal cual. Mejora posible en v2 (API verificada en la documentación del
-Plugin SDK): tras crear el árbol, buscar los rems de encabezado y aplicar
-`rem.setFontSize('H1' | 'H2' | 'H3')` y `plugin.richText.text('...', ['Yellow' | 'Gray'])`.
-No se hizo en v1 para no arriesgar la estructura base.
+- **v0.1.3 (18 nov 2026) — documentos independientes**: cada tema pasa a
+  ser su propio documento (`setIsDocument(true)`); los 31 temas anidados
+  que ya existían se promueven en su lugar (status `convertido` en el
+  reporte del sync). Contingencia: si el parser dejó la sección en
+  mayúsculas (`# TEMA`) como raíz hermana del título, el sync la mueve
+  bajo el título para que el documento contenga el tema completo. Nada que
+  borrar: el árbol viejo ES el documento nuevo.
+- **v0.1.2 (16 nov 2026)**: errores por paso, `setParent`, caché de
+  carpetas, `createTreeWithMarkdown` (SDK 0.0.20).
 
-## Nota del SDK (0.0.14)
+## Nota del SDK (0.0.20, vigente)
 
-La plantilla oficial fija `@remnote/plugin-sdk` en 0.0.14. En esa versión
-NO existen `createTreeWithMarkdown` / `createSingleRemWithMarkdown` (son
-de versiones más nuevas del SDK). El motor usa la API real de 0.0.14:
-`createWithMarkdown()` crea el árbol del tema y `moveRems()` lo coloca
-bajo su especialidad (`createRem()` + `setText()` + `moveRems()` para los
-rems padre). `npm run check-types` (tsc) pasa limpio y el build genera
-`PluginZip.zip`.
+El SDK es `@remnote/plugin-sdk` 0.0.20. El motor usa
+`createTreeWithMarkdown(markdown, parentId)` para crear el árbol del tema
+(`createWithMarkdown` fue eliminado en 0.0.20), `Rem.setParent()` para los
+movimientos y `Rem.setIsDocument(true)` / `Rem.isDocument()` para marcar
+cada tema como documento independiente. `npm run check-types` (tsc) pasa
+limpio y el build genera `PluginZip.zip`.
 
 ## CORS
 
@@ -113,6 +122,11 @@ apunta a https://github.com/diegogarciaguzman/enarm-remnote-plugin).
 4. Abre la pestaña "ENARM · Resúmenes" en la barra lateral derecha y pulsa
    "Sincronizar ahora". El tema de prueba (Control prenatal, 9 nov) debe
    aparecer bajo ENARM → GINECOLOGÍA Y OBSTETRICIA, con sus 16 flashcards.
+
+**Para actualizar a una versión nueva**: se sube el ZIP nuevo por la misma
+ruta (Build → "Upload plugin"); RemNote reemplaza la versión instalada.
+Después, pulsa "Sincronizar ahora" para que el sync nuevo corra (o reabre
+RemNote y deja que el auto-sync lo haga solo).
 
 Si algo sale mal: abre RemNote con los plugins desactivados en
 http://www.remnote.com/notes?disablePlugins y quita el plugin.

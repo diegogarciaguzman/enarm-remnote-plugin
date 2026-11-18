@@ -38,6 +38,7 @@ export const EnarmSyncWidget = () => {
   };
 
   const created = results?.filter((r) => r.status === 'creado') ?? [];
+  const converted = results?.filter((r) => r.status === 'convertido') ?? [];
   const skipped = results?.filter((r) => r.status === 'ya-existia') ?? [];
   const failed = results?.filter((r) => r.status === 'error') ?? [];
 
@@ -57,13 +58,13 @@ export const EnarmSyncWidget = () => {
       {results && (
         <div className="mt-2 text-sm">
           <div>
-            Creados: {created.length} · Ya estaban: {skipped.length} · Errores: {failed.length}
+            Creados: {created.length} · Convertidos: {converted.length} · Ya estaban: {skipped.length} · Errores: {failed.length}
           </div>
           <ul className="mt-1">
             {results.map((r) => (
               <li key={`${r.date}-${r.topic}`}>
                 {r.date} — {r.topic} ({r.especialidad}):{' '}
-                {r.status === 'creado' ? 'creado' : r.status === 'ya-existia' ? 'ya estaba' : `error: ${r.detail ?? ''}`}
+                {r.status === 'creado' ? 'creado' : r.status === 'convertido' ? 'convertido a documento' : r.status === 'ya-existia' ? 'ya estaba' : `error: ${r.detail ?? ''}`}
               </li>
             ))}
           </ul>
