@@ -11,8 +11,9 @@ import {
   type RevealRow,
   type VisibilityRow,
 } from '../verify';
+import { getMoveTestLog, runMoveTest, type MoveTestResult } from '../move-test';
 
-type BusyAction = 'sync' | 'diagnose' | 'reveal' | 'cards' | null;
+type BusyAction = 'sync' | 'diagnose' | 'reveal' | 'cards' | 'movetest' | null;
 
 export const EnarmSyncWidget = () => {
   const plugin = usePlugin();
@@ -28,6 +29,7 @@ export const EnarmSyncWidget = () => {
   const [visResults, setVisResults] = useState<VisibilityRow[] | null>(null);
   const [revealResults, setRevealResults] = useState<RevealRow[] | null>(null);
   const [cardResults, setCardResults] = useState<CardCheckResult | null>(null);
+  const [moveResults, setMoveResults] = useState<MoveTestResult[]>(() => getMoveTestLog());
   const runningRef = useRef(false);
 
   // El registro se actualiza también cuando el sync corre desde el comando
@@ -106,6 +108,22 @@ export const EnarmSyncWidget = () => {
       const settings = await readEnarmSettings(plugin);
       const queue = await fetchQueue(settings.queueUrl);
       setCardResults(await verifyCards(plugin, queue));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+      runningRef.current = false;
+    }
+  };
+
+  const runMove = async () => {
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setBusy('movetest');
+    setError(null);
+    try {
+      await runMoveTest(plugin);
+      setMoveResults(getMoveTestLog());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -268,6 +286,61 @@ export const EnarmSyncWidget = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+      <div className="mt-3 text-sm">
+        <h2 className="font-bold">Probar mover con setParent (v0.1.5)</h2>
+        <div className="text-xs">
+          Crea un rem de prueba en COLOPROCTOLOGÍA, lo mueve con setParent a
+          CIRUGÍA GENERAL y reporta si mueve limpio o duplica. No toca
+          contenido real. Si mueve limpio, el rem ya se borró; si duplica,
+          no se borra nada.
+        </div>
+        <button className={btnClass} onClick={() => void runMove()} disabled={busy !== null}>
+          {busy === 'movetest' ? 'Probando…' : 'Probar mover (1 rem)'}
+        </button>
+        {moveResults.length > 0 && (
+          <div className="mt-2 text-xs">
+            <table className="mt-1 w-full">
+              <thead>
+                <tr>
+                  <th className="text-left">Cuándo</th>
+                  <th className="text-left">Veredicto</th>
+                  <th className="text-right">Origen ant./desp.</th>
+                  <th className="text-right">Destino ant./desp.</th>
+                  <th className="text-left">Borrado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {moveResults.map((r) => (
+                  <tr key={r.at}>
+                    <td>{new Date(r.at).toLocaleString('es-MX')}</td>
+                    <td>
+                      {r.error
+                        ? `error: ${r.error}`
+                        : r.verdict === 'mueve-limpio'
+                          ? 'MUEVE LIMPIO'
+                          : r.verdict === 'duplica'
+                            ? 'DUPLICA'
+                            : 'INCONCLUSO'}
+                    </td>
+                    <td className="text-right">
+                      {r.beforeSource} → {r.afterSource}
+                    </td>
+                    <td className="text-right">
+                      {r.beforeTarget} → {r.afterTarget}
+                    </td>
+                    <td>{r.cleanedUp ? 'sí' : 'no'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {moveResults[0]?.notes.map((n) => (
+              <div key={n} className="mt-1">
+                {n}
+              </div>
+            ))}
           </div>
         )}
       </div>

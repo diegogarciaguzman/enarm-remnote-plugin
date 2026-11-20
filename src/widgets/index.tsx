@@ -11,6 +11,7 @@ import {
 import { fetchQueue, type EnarmQueue } from '../queue';
 import { runSyncAllOnce } from '../sync';
 import { diagnoseVisibility, revealContent, verifyCards } from '../verify';
+import { runMoveTest } from '../move-test';
 
 /** Descarga la cola de resúmenes (misma fuente para sync y verificaciones). */
 async function loadQueue(plugin: ReactRNPlugin): Promise<EnarmQueue> {
@@ -116,6 +117,44 @@ async function runRevealContent(plugin: ReactRNPlugin): Promise<void> {
 }
 
 /**
+ * Prueba de mover con setParent (v0.1.5): crea UN rem desechable en
+ * COLOPROCTOLOGÍA, lo mueve con setParent a CIRUGÍA GENERAL y reporta
+ * si mueve limpio o duplica. Si mueve limpio, el rem ya se borró; si
+ * duplica, no se borra nada (queda para inspección). Nunca toca rems
+ * reales. El detalle queda en el widget.
+ */
+async function runMoveTestCommand(plugin: ReactRNPlugin): Promise<void> {
+  if (!hasRemAccess(plugin)) {
+    await noAccessToast(plugin);
+    return;
+  }
+  try {
+    const result = await runMoveTest(plugin);
+    if (result.verdict === 'mueve-limpio') {
+      await plugin.app.toast(
+        `ENARM: setParent — MUEVE LIMPIO: el rem de prueba quedó solo en CIRUGÍA GENERAL con su hijo (origen ${result.afterSource}, destino ${result.afterTarget}) y ya se borró. Método válido para mover contenido. Detalle en el widget.`,
+      );
+    } else if (result.verdict === 'duplica') {
+      await plugin.app.toast(
+        `ENARM: setParent — DUPLICA: el rem quedó en ambas secciones (origen ${result.afterSource}, destino ${result.afterTarget}). No se borró nada; hay que limpiar el duplicado a mano. Detalle en el widget.`,
+      );
+    } else if (result.verdict === 'inconcluso') {
+      await plugin.app.toast(
+        `ENARM: setParent — INCONCLUSO (origen ${result.afterSource}, destino ${result.afterTarget}, padre en destino: ${result.parentIsTarget}, hijo intacto: ${result.childIntact}). No se borró nada. Detalle en el widget.`,
+      );
+    } else {
+      await plugin.app.toast(
+        `ENARM: setParent — ERROR: ${result.error ?? 'sin detalle'}. Detalle en el widget.`,
+      );
+    }
+  } catch (error) {
+    await plugin.app.toast(
+      `ENARM: no se pudo probar setParent: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
  * Verificación de tarjetas por tema (SOLO LECTURA, v0.1.4): cuenta las
  * tarjetas reales por subárbol y las compara con los `>>` de la cola.
  */
@@ -184,6 +223,17 @@ async function onActivate(plugin: ReactRNPlugin) {
     name: 'ENARM: verificar tarjetas por tema',
     action: async () => {
       await runVerifyCards(plugin);
+    },
+  });
+
+  // v0.1.5: prueba de mover con setParent (1 rem desechable, sin tocar
+  // contenido real). Diego la pidió el 20 nov 2026 tras cancelar
+  // cortar/pegar: Move Bullet duplica y el corte/pega exige su teclado.
+  await plugin.app.registerCommand({
+    id: 'enarm-test-setparent',
+    name: 'ENARM: probar mover con setParent (1 rem)',
+    action: async () => {
+      await runMoveTestCommand(plugin);
     },
   });
 

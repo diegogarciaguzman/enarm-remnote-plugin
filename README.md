@@ -60,6 +60,17 @@ ENARM
 
 ## Cambios
 
+- **v0.1.5 (20 nov 2026) — prueba de mover con setParent**: el comando
+  "Move Bullet" de la UI duplica en vez de mover (casi seguro llama a
+  `moveRems()` pasando el origen como portal) y cortar/pegar exige el
+  teclado del usuario (la herramienta del navegador no puede enviar
+  Ctrl+X/Ctrl+V) — Diego canceló ese método el 20 nov 2026. Nuevo
+  comando `ENARM: probar mover con setParent (1 rem)` (también botón en
+  el widget): crea un rem desechable en COLOPROCTOLOGÍA, lo mueve con
+  `Rem.setParent()` (sin parámetro de portal) a CIRUGÍA GENERAL y
+  reporta si mueve limpio o duplica, con conteos antes/después en ambas
+  secciones. Si mueve limpio, el rem ya se borró; si duplica, no se
+  borra nada (queda para inspección). Nunca toca rems reales.
 - **v0.1.4 (18 nov 2026) — visibilidad de documentos (reveal)**: las
   páginas de los 31 documentos se veían casi vacías aunque el contenido
   está completo en el árbol: los hijos estaban ocultos en el contexto de
@@ -114,6 +125,7 @@ del cambio.
 - `src/queue.ts` — tipos y descarga/validación de la cola.
 - `src/sync.ts` — motor: crea raíz ENARM → especialidad → tema.
 - `src/verify.ts` — v0.1.4: diagnóstico de visibilidad, reveal y verificación de tarjetas por tema.
+- `src/move-test.ts` — v0.1.5: prueba de mover con setParent (1 rem desechable, COLOPROCTOLOGÍA → CIRUGÍA GENERAL).
 - `src/widgets/index.tsx` — onActivate: registra ajustes, comando y widget.
 - `src/widgets/enarm_sync.tsx` — widget lateral con botón y reporte de sync.
 - `../data/queue.json` — cola actual (tema de prueba: Control prenatal).
